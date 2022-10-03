@@ -2,6 +2,7 @@ import json
 from django.contrib import auth
 from django.contrib.auth.models import User
 from django.http import HttpResponse
+from MyApp.models import *
 
 from django.shortcuts import render
 
@@ -56,3 +57,20 @@ def get_echarts_data(request):
     for i in range(len(res['series'])):
         res['series'][i].update(style)
     return HttpResponse(json.dumps(res), content_type='application/json')
+
+
+def get_projects(request):
+    projects = list(
+        DB_Projects.objects.all().values())  # 会返回一个 列表内套字典  如 [{"name":"newproject","",""},{"name":"newproject2","",""}]
+    return HttpResponse(json.dumps(projects), content_type='application/json')
+
+
+def add_project(request):
+    DB_Projects.objects.create()
+    return get_projects(request)
+
+
+def delete_project(request):
+    project_id = request.GET['project_id']
+    DB_Projects.objects.filter(id=project_id).delete()
+    return get_projects(request)
