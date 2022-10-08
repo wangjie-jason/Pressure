@@ -74,3 +74,16 @@ def delete_project(request):
     project_id = request.GET['project_id']
     DB_Projects.objects.filter(id=project_id).delete()
     return get_projects(request)
+
+
+def get_project_detail(request):
+    project_id = request.GET['project_id']
+    project_detail = list(DB_Projects.objects.filter(id=project_id).values())[0]
+    return HttpResponse(json.dumps(project_detail), content_type='application/json')
+
+
+def save_project(request):
+    project_detail = json.loads(request.body.decode('utf-8'))
+    project_id = project_detail['id']
+    DB_Projects.objects.filter(id=project_id).update(**project_detail)
+    return HttpResponse('')
