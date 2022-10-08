@@ -29,4 +29,6 @@ urlpatterns = [
     path('delete_project/', views.delete_project),
     path('get_project_detail/',views.get_project_detail),
     path('save_project/', views.save_project),
+    path('upload_script_file/',views.upload_script_file),
+    path('get_script_list/',views.get_script_list)
 ]

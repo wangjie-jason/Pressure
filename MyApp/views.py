@@ -1,4 +1,6 @@
 import json
+import os
+
 from django.contrib import auth
 from django.contrib.auth.models import User
 from django.http import HttpResponse
@@ -79,6 +81,7 @@ def delete_project(request):
 def get_project_detail(request):
     project_id = request.GET['project_id']
     project_detail = list(DB_Projects.objects.filter(id=project_id).values())[0]
+    project_detail['scripts'] = eval(project_detail['scripts'])
     return HttpResponse(json.dumps(project_detail), content_type='application/json')
 
 
@@ -87,3 +90,17 @@ def save_project(request):
     project_id = project_detail['id']
     DB_Projects.objects.filter(id=project_id).update(**project_detail)
     return HttpResponse('')
+
+
+def upload_script_file(request):
+    my_file = request.FILES.get('script_file')
+    file_name = str(my_file)
+    with open('scripts/' + file_name, 'wb+') as fp:
+        for i in my_file.chunks():
+            fp.write(i)
+    return HttpResponse('')
+
+
+def get_script_list(request):
+    script_list = os.listdir('scripts')
+    return HttpResponse(json.dumps(script_list))
