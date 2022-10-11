@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 from django.contrib import auth
 from django.contrib.auth.models import User
@@ -104,3 +105,15 @@ def upload_script_file(request):
 def get_script_list(request):
     script_list = os.listdir('scripts')
     return HttpResponse(json.dumps(script_list))
+
+
+def get_tasks(request):
+    tasks = list(DB_Tasks.objects.all().values())
+    return HttpResponse(json.dumps(tasks))
+
+
+def add_task(request):
+    project_id = request.GET['project_id']
+    des = request.GET['des']
+    DB_Tasks.objects.create(des=des, project_id=int(project_id), stime=str(time.strftime('%Y-%m-%d %H:%M:%S')))
+    return get_tasks(request)

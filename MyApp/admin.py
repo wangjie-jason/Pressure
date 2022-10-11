@@ -4,3 +4,4 @@ from django.contrib import admin
 from MyApp.models import *
 
 admin.site.register(DB_Projects)
+admin.site.register(DB_Tasks)
