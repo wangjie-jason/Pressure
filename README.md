@@ -9,7 +9,10 @@
     - sh vue_requirements.sh
 
 - 启动消息队列中间件
-    - python3 /Users/wangjie/Pressure/MyApp/task_mq.py
+  ```
+  python3 /Users/wangjie/Pressure/MyApp/task_mq.py
+  注：想用几个并发就启动几次 
+  ```
 
 ## 项目结构
 
