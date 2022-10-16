@@ -5,6 +5,8 @@ import time
 from django.contrib import auth
 from django.contrib.auth.models import User
 from django.http import HttpResponse
+from django_task_mq import mq_producer
+
 from MyApp.models import *
 
 from django.shortcuts import render
@@ -108,12 +110,22 @@ def get_script_list(request):
 
 
 def get_tasks(request):
-    tasks = list(DB_Tasks.objects.all().values())
+    tasks = list(DB_Tasks.objects.all().values())[::-1]
     return HttpResponse(json.dumps(tasks))
 
 
 def add_task(request):
     project_id = request.GET['project_id']
     des = request.GET['des']
-    DB_Tasks.objects.create(des=des, project_id=int(project_id), stime=str(time.strftime('%Y-%m-%d %H:%M:%S')))
+    new_task = DB_Tasks.objects.create(des=des, project_id=int(project_id),
+                                       stime=str(time.strftime('%Y-%m-%d %H:%M:%S')))
+    mq_producer(DB_django_task_mq, topic='yace', message={'task_id': new_task.id})
     return get_tasks(request)
+
+
+def play_tasks(message):
+    message = json.loads(message)
+    task_id = message['task_id']
+    DB_Tasks.objects.filter(id=int(task_id)).update(status='压测中')
+    time.sleep(10)
+    DB_Tasks.objects.filter(id=int(task_id)).update(status='已结束')

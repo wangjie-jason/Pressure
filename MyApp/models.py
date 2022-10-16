@@ -19,3 +19,12 @@ class DB_Tasks(models.Model):
 
     def __str__(self):
         return self.des
+
+
+class DB_django_task_mq(models.Model):
+    topic = models.CharField(max_length=100, null=True, blank=True, default="")
+    message = models.TextField(default="{}")
+    status = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.topic
