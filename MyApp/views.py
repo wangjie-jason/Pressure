@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import threading
 import time
 
 from django.contrib import auth
@@ -124,8 +126,44 @@ def add_task(request):
 
 
 def play_tasks(message):
+    def doit(script_path):
+        subprocess.call('python3 ' + script_path, shell=True)
+
+    def one_round(script_path):
+        ts = []
+        for n in range(thread_num):
+            t = threading.Thread(target=doit, args=(script_path,))
+            t.setDaemon(True)
+            ts.append(t)
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        print('-------------结束了一轮压测--------------')
+
     message = json.loads(message)
     task_id = message['task_id']
-    DB_Tasks.objects.filter(id=int(task_id)).update(status='压测中')
-    time.sleep(10)
-    DB_Tasks.objects.filter(id=int(task_id)).update(status='已结束')
+    task = DB_Tasks.objects.filter(id=int(task_id))
+    task.update(status='压测中')
+    # -----
+    # 根据这个任务关联的项目id，去数据库找出这个项目的所有内容。
+    project = DB_Projects.objects.filter(id=int(task[0].project_id))[0]
+    scripts = eval(project.scripts)
+    for step in project.plan.split(','):  # step阶段
+        script = scripts[int(step.split('-')[0])]
+        thread_num = int(step.split('-')[1])
+        task_rounds = int(step.split('-')[2])
+        script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts', script)
+        trs = []
+        for r in range(task_rounds):
+            tr = threading.Thread(target=one_round, args=(script_path,))
+            tr.setDaemon(True)
+            trs.append(tr)
+        for tr in trs:
+            tr.start()
+            time.sleep(1)
+        for tr in trs:
+            tr.join()
+        print('-------------结束了一个阶段的压测计划--------------')
+    print('【整个压测任务结束】')
+    task.update(status='已结束')
