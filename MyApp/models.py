@@ -16,6 +16,8 @@ class DB_Tasks(models.Model):
     des = models.CharField(max_length=300, null=True, blank=True, default='')
     project_id = models.IntegerField(default=0)
     status = models.CharField(max_length=10, null=True, blank=True, default='队列中')  # 队列中 ， 压测中，已结束。
+    mq_id = models.IntegerField(default=0)
+    stop = models.BooleanField(default=False)  # 终止状态
 
     def __str__(self):
         return self.des

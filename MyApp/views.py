@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import subprocess
+import sys
 import threading
 import time
 
@@ -121,13 +123,15 @@ def add_task(request):
     des = request.GET['des']
     new_task = DB_Tasks.objects.create(des=des, project_id=int(project_id),
                                        stime=str(time.strftime('%Y-%m-%d %H:%M:%S')))
-    mq_producer(DB_django_task_mq, topic='yace', message={'task_id': new_task.id})
+    mq_id = mq_producer(DB_django_task_mq, topic='yace', message={'task_id': new_task.id})
+    new_task.mq_id = mq_id
+    new_task.save()
     return get_tasks(request)
 
 
-def play_tasks(message):
+def play_tasks(mq):
     def doit(script_path):
-        subprocess.call('python3 ' + script_path, shell=True)
+        subprocess.call('python3 ' + script_path + ' mq_id=' + str(mq.id), shell=True)
 
     def one_round(script_path):
         ts = []
@@ -141,7 +145,7 @@ def play_tasks(message):
             t.join()
         print('-------------结束了一轮压测--------------')
 
-    message = json.loads(message)
+    message = json.loads(mq.message)
     task_id = message['task_id']
     task = DB_Tasks.objects.filter(id=int(task_id))
     task.update(status='压测中')
@@ -149,7 +153,7 @@ def play_tasks(message):
     # 根据这个任务关联的项目id，去数据库找出这个项目的所有内容。
     project = DB_Projects.objects.filter(id=int(task[0].project_id))[0]
     scripts = eval(project.scripts)
-    for step in project.plan.split(','):  # step阶段
+    for step in project.plan.split(','):  # step=阶段
         script = scripts[int(step.split('-')[0])]
         thread_num = int(step.split('-')[1])
         task_rounds = int(step.split('-')[2])
@@ -159,7 +163,11 @@ def play_tasks(message):
             tr = threading.Thread(target=one_round, args=(script_path,))
             tr.setDaemon(True)
             trs.append(tr)
-        for tr in trs:
+        for tr in trs:  # tr=轮
+            # 路障
+            now_task = DB_Tasks.objects.filter(id=task_id)[0]
+            if now_task.stop:
+                break
             tr.start()
             time.sleep(1)
         for tr in trs:
@@ -167,3 +175,49 @@ def play_tasks(message):
         print('-------------结束了一个阶段的压测计划--------------')
     print('【整个压测任务结束】')
     task.update(status='已结束')
+
+
+def stop_task(request):
+    def stop_mac():
+        ts = subprocess.check_output('ps -ef | grep mq_id=%s | grep -v "grep"' % str(mq_id), shell=True)
+        for t in str(ts).split('mq_id=' + str(mq_id)):
+            s = re.findall(r'\b(\d+?)\b', t)[:3]
+            if s:
+                pid = max([int(i) for i in s])
+                subprocess.call('kill -9 ' + str(pid), shell=True)
+
+    def stop_windows():
+        ts = subprocess.check_output('wmic process where caption="python.exe" get processid,commandline', shell=True)
+        for t in str(ts).split(r'\n'):
+            if 'mqid=' + str(mq_id) in t:
+                pid = re.findall(r'\b(\d+?)\b', t)[-1]
+                subprocess.call('taskkill /T /F /PID %s' % pid, shell=True)
+
+    task_id = request.GET['id']
+    task = DB_Tasks.objects.filter(id=int(task_id))[0]
+    mq_id = task.mq_id
+    if task.status == '队列中':
+        DB_django_task_mq.objects.filter(id=int(mq_id)).delete()
+        task.status = '队列中时结束'
+        task.save()
+    elif task.status == '压测中':
+        task.stop = True
+        task.save()
+        for j in range(100):
+            now_task = DB_Tasks.objects.filter(id=int(task_id))[0]
+            if now_task.status == '压测中':
+                try:
+                    if sys.platform in ('win32', 'win64'):
+                        stop_windows()
+                    else:
+                        stop_mac()
+                except:
+                    break
+                finally:
+                    now_task.status = '压测中时结束'
+                    now_task.save()
+            else:
+                break
+    else:
+        return HttpResponse(json.dumps({"errorCode": 300, "data": [], "Message": "任务已结束"}))
+    return HttpResponse(json.dumps({"errorCode": 200, "data": [], "Message": "终止成功"}))
