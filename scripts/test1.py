@@ -6,5 +6,5 @@
 # @project : Pressure
 import time
 
-print('我是压测脚本1')
-time.sleep(20000)
+print('我是压测脚本1', int(time.time()))
+time.sleep(5)

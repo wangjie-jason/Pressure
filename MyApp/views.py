@@ -133,7 +133,7 @@ def play_tasks(mq):
     def doit(script_path):
         subprocess.call('python3 ' + script_path + ' mq_id=' + str(mq.id), shell=True)
 
-    def one_round(script_path):
+    def one_round(script_path, thread_num):
         ts = []
         for n in range(thread_num):
             t = threading.Thread(target=doit, args=(script_path,))
@@ -155,12 +155,29 @@ def play_tasks(mq):
     scripts = eval(project.scripts)
     for step in project.plan.split(','):  # step=阶段
         script = scripts[int(step.split('-')[0])]
-        thread_num = int(step.split('-')[1])
-        task_rounds = int(step.split('-')[2])
         script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts', script)
         trs = []
-        for r in range(task_rounds):
-            tr = threading.Thread(target=one_round, args=(script_path,))
+        if '+' in step:  # 无限增压
+            task_rounds = 100
+        elif '_' in step:  # 瞬时增压
+            task_rounds = int(step.split('-')[2]) * (step.count('_') + 1)
+        else:
+            task_rounds = int(step.split('-')[2])
+
+        for r in range(task_rounds):  # round = 5  r = 0,1,2,3,4
+            if '/' in step:  # 阶梯增压 0-10/90-5
+                mid = step.split('-')[1]  # 10/90
+                thread_num = int(int(mid.split('/')[0]) + (int(mid.split('/')[1]) - int(mid.split('/')[0])) / (
+                        task_rounds - 1) * r)
+            elif '+' in step:  # 无限增压 0-10+5
+                mid = step.split('-')[1]  # 10+5
+                thread_num = int(int(mid.split('+')[0]) + int(mid.split('+')[1]) * r)
+            elif '_' in step:  # 瞬时增压 0-10_100_1000-5   r=0,1,2,3,4=10=0   r=5,6,7,8,9=100=1  r=10,11,12,13,14=1000=2
+                mid = step.split('-')[1].split('_')  # [10,100,1000]
+                thread_num = int(mid[int(r / int(step.split('-')[2]))])
+            else:
+                thread_num = int(step.split('-')[1])
+            tr = threading.Thread(target=one_round, args=(script_path, thread_num))
             tr.setDaemon(True)
             trs.append(tr)
         for tr in trs:  # tr=轮
@@ -199,6 +216,7 @@ def stop_task(request):
     if task.status == '队列中':
         DB_django_task_mq.objects.filter(id=int(mq_id)).delete()
         task.status = '队列中时结束'
+        task.stop = True
         task.save()
     elif task.status == '压测中':
         task.stop = True
