@@ -100,16 +100,19 @@ def save_project(request):
 
 
 def upload_script_file(request):
+    script_model = request.POST.get('script_model')
     my_file = request.FILES.get('script_file')
     file_name = str(my_file)
-    with open('scripts/' + file_name, 'wb+') as fp:
+    with open('scripts/' + script_model + '/' + file_name, 'wb+') as fp:
         for i in my_file.chunks():
             fp.write(i)
     return HttpResponse('')
 
 
 def get_script_list(request):
-    script_list = os.listdir('scripts')
+    script_list = []
+    for d in ('other', 'python', 'go'):
+        script_list += [d + '/' + i for i in os.listdir(os.path.join('scripts', d))]
     return HttpResponse(json.dumps(script_list))
 
 
@@ -130,13 +133,21 @@ def add_task(request):
 
 
 def play_tasks(mq):
-    def doit(script_path):
+    def doit_other(script_path):
+        print('other')
         subprocess.call('python3 ' + script_path + ' mq_id=' + str(mq.id), shell=True)
 
-    def one_round(script_path, thread_num):
+    def doit_python(script_path):
+        print('python')
+
+    def doit_go(script_path):
+        print('go')
+
+    def one_round(script_path, thread_num, script_model):
         ts = []
+        target = {'other': doit_other, 'python': doit_python, 'go': doit_go}[script_model]
         for n in range(thread_num):
-            t = threading.Thread(target=doit, args=(script_path,))
+            t = threading.Thread(target=target, args=(script_path,))
             t.setDaemon(True)
             ts.append(t)
         for t in ts:
@@ -154,8 +165,9 @@ def play_tasks(mq):
     project = DB_Projects.objects.filter(id=int(task[0].project_id))[0]
     scripts = eval(project.scripts)
     for step in project.plan.split(','):  # step=阶段
-        script = scripts[int(step.split('-')[0])]
-        script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts', script)
+        script = scripts[int(step.split('-')[0])].split('/')
+        script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts', script[0],
+                                   script[1])
         trs = []
         if '+' in step:  # 无限增压
             task_rounds = 100
@@ -177,7 +189,7 @@ def play_tasks(mq):
                 thread_num = int(mid[int(r / int(step.split('-')[2]))])
             else:
                 thread_num = int(step.split('-')[1])
-            tr = threading.Thread(target=one_round, args=(script_path, thread_num))
+            tr = threading.Thread(target=one_round, args=(script_path, thread_num,script[0]))
             tr.setDaemon(True)
             trs.append(tr)
         for tr in trs:  # tr=轮
