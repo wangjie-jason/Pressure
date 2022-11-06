@@ -88,7 +88,7 @@ def delete_project(request):
 def get_project_detail(request):
     project_id = request.GET['project_id']
     project_detail = list(DB_Projects.objects.filter(id=project_id).values())[0]
-    project_detail['scripts'] = eval(project_detail['scripts'])
+    project_detail['plan'] = eval(project_detail['plan'])
     return HttpResponse(json.dumps(project_detail), content_type='application/json')
 
 
@@ -189,7 +189,7 @@ def play_tasks(mq):
                 thread_num = int(mid[int(r / int(step.split('-')[2]))])
             else:
                 thread_num = int(step.split('-')[1])
-            tr = threading.Thread(target=one_round, args=(script_path, thread_num,script[0]))
+            tr = threading.Thread(target=one_round, args=(script_path, thread_num, script[0]))
             tr.setDaemon(True)
             trs.append(tr)
         for tr in trs:  # tr=轮
