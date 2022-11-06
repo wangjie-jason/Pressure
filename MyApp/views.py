@@ -163,33 +163,37 @@ def play_tasks(mq):
     # -----
     # 根据这个任务关联的项目id，去数据库找出这个项目的所有内容。
     project = DB_Projects.objects.filter(id=int(task[0].project_id))[0]
-    scripts = eval(project.scripts)
-    for step in project.plan.split(','):  # step=阶段
-        script = scripts[int(step.split('-')[0])].split('/')
-        script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts', script[0],
-                                   script[1])
+    # scripts = eval(project.scripts)
+    # 旧："0-1/5-3,1-10-3"
+    # 新：[("name "：〞脚本类型/脚本名字"，"old num"1_10_100_1000", "old round": "3",{},{}]
+    plan = eval(project.plan)
+    for step in plan:  # step=阶段
+        script_model = step['name'].split('/')[0]
+        script_name = step['name'].split('/')[1]
+        script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts', script_model,
+                                   script_name)
         trs = []
-        if '+' in step:  # 无限增压
+        if '+' in step['old_num']:  # 无限增压
             task_rounds = 100
-        elif '_' in step:  # 瞬时增压
-            task_rounds = int(step.split('-')[2]) * (step.count('_') + 1)
+        elif '_' in step['old_num']:  # 瞬时增压
+            task_rounds = int(step['old_round']) * (step['old_num'].count('_') + 1)
         else:
-            task_rounds = int(step.split('-')[2])
+            task_rounds = int(step['old_round'])
 
         for r in range(task_rounds):  # round = 5  r = 0,1,2,3,4
-            if '/' in step:  # 阶梯增压 0-10/90-5
-                mid = step.split('-')[1]  # 10/90
+            if '/' in step['old_num']:  # 阶梯增压 0-10/90-5
+                mid = step['old_num']  # 10/90
                 thread_num = int(int(mid.split('/')[0]) + (int(mid.split('/')[1]) - int(mid.split('/')[0])) / (
                         task_rounds - 1) * r)
-            elif '+' in step:  # 无限增压 0-10+5
-                mid = step.split('-')[1]  # 10+5
-                thread_num = int(int(mid.split('+')[0]) + int(mid.split('+')[1]) * r)
-            elif '_' in step:  # 瞬时增压 0-10_100_1000-5   r=0,1,2,3,4=10=0   r=5,6,7,8,9=100=1  r=10,11,12,13,14=1000=2
-                mid = step.split('-')[1].split('_')  # [10,100,1000]
-                thread_num = int(mid[int(r / int(step.split('-')[2]))])
+            elif '+' in step['old_num']:  # 无限增压 0-10+5
+                mid = step['old_num']  # 10+
+                thread_num = int(int(mid.split('+')[0]) + int(step['old_round']) * r)
+            elif '_' in step['old_num']:  # 瞬时增压 0-10_100_1000-5   r=0,1,2,3,4=10=0   r=5,6,7,8,9=100=1  r=10,11,12,13,14=1000=2
+                mid = step['old_num'].split('_')  # [10,100,1000]
+                thread_num = int(mid[int(r / int(step['old_round']))])
             else:
-                thread_num = int(step.split('-')[1])
-            tr = threading.Thread(target=one_round, args=(script_path, thread_num, script[0]))
+                thread_num = int(step['old_num'])
+            tr = threading.Thread(target=one_round, args=(script_path, thread_num, script_model))
             tr.setDaemon(True)
             trs.append(tr)
         for tr in trs:  # tr=轮

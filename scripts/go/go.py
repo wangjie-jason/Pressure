@@ -7,4 +7,3 @@
 import time
 
 print('我是压测脚本2')
-time.sleep(20000)
