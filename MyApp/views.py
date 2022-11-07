@@ -8,7 +8,7 @@ import time
 
 from django.contrib import auth
 from django.contrib.auth.models import User
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django_task_mq import mq_producer
 
 from MyApp.models import *
@@ -110,9 +110,12 @@ def upload_script_file(request):
 
 
 def get_script_list(request):
-    script_list = []
-    for d in ('other', 'python', 'go'):
-        script_list += [d + '/' + i for i in os.listdir(os.path.join('scripts', d))]
+    # script_list = []
+    # for d in ['other', 'python', 'go']:
+    #     script_list += [d + '/' + i for i in os.listdir(os.path.join('scripts', d))]
+    script_list = [d + '/' + i for d in ['other', 'go', 'python'] for i in os.listdir(os.path.join('scripts', d))]
+    # script_list = sum([[d + '/' + i for i in os.listdir(os.path.join('scripts', d))] for d in ['other', 'go', 'python']], [])
+    # script_list = list(chain.from_iterable( numpy.array( [ [d+'/'+i  for i in os.listdir(os.path.join('scripts',d))]   for d in ['other','go','python']  ])))
     return HttpResponse(json.dumps(script_list))
 
 
@@ -133,21 +136,22 @@ def add_task(request):
 
 
 def play_tasks(mq):
-    def doit_other(script_path):
-        print('other')
-        subprocess.call('python3 ' + script_path + ' mq_id=' + str(mq.id), shell=True)
+    def doit_other(script_path, script_params):
+        _bin = dz[script_name.split('.')[-1]]
+        subprocess.call(_bin + ' ' + script_path + ' ' + script_params + ' mq_id=' + str(mq.id), shell=True)
 
-    def doit_python(script_path):
-        print('python')
+    def doit_python(script_path, script_params):
+        exec('from scripts.python.%s import %s\n%s' % (
+            script_name.split('.')[0], script_params.split('(')[0], script_params))
 
-    def doit_go(script_path):
+    def doit_go(script_path, script_params):
         print('go')
 
-    def one_round(script_path, thread_num, script_model):
+    def one_round(script_path, thread_num, script_model, script_params):
         ts = []
         target = {'other': doit_other, 'python': doit_python, 'go': doit_go}[script_model]
         for n in range(thread_num):
-            t = threading.Thread(target=target, args=(script_path,))
+            t = threading.Thread(target=target, args=(script_path, script_params))
             t.setDaemon(True)
             ts.append(t)
         for t in ts:
@@ -156,6 +160,7 @@ def play_tasks(mq):
             t.join()
         print('-------------结束了一轮压测--------------')
 
+    dz = {'py': 'python3', 'java': 'java', 'php': 'php'}  # 后缀对应doit_other启动对应语言的脚本命令
     message = json.loads(mq.message)
     task_id = message['task_id']
     task = DB_Tasks.objects.filter(id=int(task_id))
@@ -163,13 +168,11 @@ def play_tasks(mq):
     # -----
     # 根据这个任务关联的项目id，去数据库找出这个项目的所有内容。
     project = DB_Projects.objects.filter(id=int(task[0].project_id))[0]
-    # scripts = eval(project.scripts)
-    # 旧："0-1/5-3,1-10-3"
-    # 新：[("name "：〞脚本类型/脚本名字"，"old num"1_10_100_1000", "old round": "3",{},{}]
     plan = eval(project.plan)
     for step in plan:  # step=阶段
         script_model = step['name'].split('/')[0]
         script_name = step['name'].split('/')[1]
+        script_params = step['script_params']
         script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts', script_model,
                                    script_name)
         trs = []
@@ -188,12 +191,12 @@ def play_tasks(mq):
             elif '+' in step['old_num']:  # 无限增压 0-10+5
                 mid = step['old_num']  # 10+
                 thread_num = int(int(mid.split('+')[0]) + int(step['old_round']) * r)
-            elif '_' in step['old_num']:  # 瞬时增压 0-10_100_1000-5   r=0,1,2,3,4=10=0   r=5,6,7,8,9=100=1  r=10,11,12,13,14=1000=2
+            elif '_' in step['old_num']:  # 瞬时增压 0-10_100_1000-5   r=0,1,2,3,4=10=0   r=5,6,7,8,9=100=1
                 mid = step['old_num'].split('_')  # [10,100,1000]
                 thread_num = int(mid[int(r / int(step['old_round']))])
             else:
                 thread_num = int(step['old_num'])
-            tr = threading.Thread(target=one_round, args=(script_path, thread_num, script_model))
+            tr = threading.Thread(target=one_round, args=(script_path, thread_num, script_model, script_params))
             tr.setDaemon(True)
             trs.append(tr)
         for tr in trs:  # tr=轮
@@ -255,3 +258,9 @@ def stop_task(request):
     else:
         return HttpResponse(json.dumps({"errorCode": 300, "data": [], "Message": "任务已结束"}))
     return HttpResponse(json.dumps({"errorCode": 200, "data": [], "Message": "终止成功"}))
+
+
+def clear_all(request):
+    DB_Tasks.objects.all().delete()
+    DB_django_task_mq.objects.all().delete()
+    return HttpResponseRedirect('/')

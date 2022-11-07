@@ -4,3 +4,7 @@
 # @Author : wangjie
 # @File : o.py
 # @project : Pressure
+import time
+
+print('我是other脚本', time.time())
+time.sleep(5)

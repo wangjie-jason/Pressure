@@ -6,4 +6,4 @@
 # @project : Pressure
 import time
 
-print('我是压测脚本2')
+print('我是go脚本', time.time())

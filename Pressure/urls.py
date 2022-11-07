@@ -34,4 +34,5 @@ urlpatterns = [
     path('get_tasks/', views.get_tasks),
     path('add_task/', views.add_task),
     path('stop_task/', views.stop_task),
+    path('clear_all/', views.clear_all),
 ]

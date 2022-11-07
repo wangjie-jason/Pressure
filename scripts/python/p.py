@@ -6,4 +6,6 @@
 # @project : Pressure
 import time
 
-print('我是压测脚本1', int(time.time()))
+
+def t(key):
+    print('我是python脚本', '我是参数：', key, time.time())
