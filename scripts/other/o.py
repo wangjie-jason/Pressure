@@ -7,4 +7,4 @@
 import time
 
 print('我是other脚本', time.time())
-time.sleep(5)
+time.sleep(50)

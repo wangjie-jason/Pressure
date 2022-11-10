@@ -21,6 +21,5 @@ django.setup()
 
 from MyApp.models import DB_django_task_mq
 from django_task_mq import mq_consumer
-from MyApp.views import play_tasks
 
-mq_consumer(DB_django_task_mq, play_tasks, topic='yace')
+mq_consumer(DB_django_task_mq, topic='yace')
