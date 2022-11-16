@@ -13,22 +13,36 @@ from MyApp.models import DB_Tasks, DB_Projects, DB_django_task_mq
 
 
 def play_tasks(mq):
-    def doit_other(script_path, script_params):
+    def doit_other(script_path, script_params, tmp):
+        start_time = time.time()
         _bin = dz[script_name.split('.')[-1]]
         subprocess.call(_bin + ' ' + script_path + ' ' + script_params + ' mq_id=' + str(mq.id), shell=True)
+        end_tims = time.time()
+        cha = int(end_tims - start_time)  # 执行每个线程所耗费的时间，精确到秒
 
-    def doit_python(script_path, script_params):
+    def doit_python(script_path, script_params, tmp):
+        start_time = time.time()
         exec('from scripts.python.%s import %s\n%s' % (
             script_name.split('.')[0], script_params.split('(')[0], script_params))
+        end_tims = time.time()
+        cha = int(end_tims - start_time)  # 执行每个线程所耗费的时间，精确到秒
+        try:
+            exec('round_times_%s[cha]+=1' % tmp)
+        except:
+            exec('round_times_%s[cha]=1' % tmp)
 
-    def doit_go(script_path, script_params):
+    def doit_go(script_path, script_params, tmp):
         print('go')
 
     def one_round(script_path, thread_num, script_model, script_params):
+        # global round_times
+        # round_times = {}  # 每轮所有线程的时间
+        tmp = str(time.time()).replace('.', '')
+        exec('global round_times_%s\nround_times_%s = {}' % (tmp, tmp))  # 每轮所有线程的时间
         ts = []
         target = {'other': doit_other, 'python': doit_python, 'go': doit_go}[script_model]
         for n in range(thread_num):
-            t = threading.Thread(target=target, args=(script_path, script_params))
+            t = threading.Thread(target=target, args=(script_path, script_params, tmp))
             t.daemon = True
             ts.append(t)
         for t in ts:
@@ -36,6 +50,7 @@ def play_tasks(mq):
         for t in ts:
             t.join()
         print('-------------结束了一轮压测--------------')
+        step_times.append(eval('round_times_%s' % tmp))
 
     dz = {'py': 'python3', 'java': 'java', 'php': 'php'}  # 后缀对应doit_other启动对应语言的脚本命令
     message = json.loads(mq.message)
@@ -46,7 +61,9 @@ def play_tasks(mq):
     # 根据这个任务关联的项目id，去数据库找出这个项目的所有内容。
     project = DB_Projects.objects.filter(id=int(task[0].project_id))[0]
     plan = eval(project.plan)
+    all_times = []  # 整个任务所有阶段及轮的时间
     for step in plan:  # step=阶段
+        step_times = []  # 每个阶段所包含的所有轮的时间
         script_model = step['name'].split('/')[0]
         script_name = step['name'].split('/')[1]
         script_params = step['script_params']
@@ -85,9 +102,10 @@ def play_tasks(mq):
             time.sleep(1)
         for tr in trs:
             tr.join()
-        print('-------------结束了一个阶段的压测计划--------------')
-    print('【整个压测任务结束】')
-    task.update(status='已结束')
+        print('-------------结束了一个阶段--------------')
+        all_times.append(step_times)
+    print('【整个压测任务结束】', all_times)
+    task.update(status='已结束', all_times=all_times)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
 Django==3.2
 django-cors-headers #解决跨域问题中间件
 django-task-mq==1.2.2 #消息队列中间件
+requests

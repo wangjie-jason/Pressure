@@ -177,3 +177,43 @@ def clear_all(request):
     DB_Tasks.objects.all().delete()
     DB_django_task_mq.objects.all().delete()
     return HttpResponseRedirect('/')
+
+
+def get_all_times(request):
+    task_id = request.GET['task_id']
+    res = {}
+    all_times = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_times)
+    print(all_times)
+    legend_data = []
+    max_time = 0
+    series = []
+    x_pass = 0  # 计算x轴起点
+
+    for step in range(len(all_times)):
+        legend_data.append('阶段【%s】平均时间' % str(step + 1))
+        max_tmp = max([max(all_times[step][d]) + d for d in range(len(all_times[step]))])  # 每个阶段所用的最大时间
+        max_time += max_tmp + 1
+        avg_time = [''] * x_pass  # 平均时间
+        x_pass += max_tmp + 1
+
+        for j in range(max_tmp + 1):  # 循环每个阶段所用的总时长
+            all_pass_time = 0  # 总消耗的时间
+            all_over_thread = 0  # 总结束的线程数
+            for d in range(len(all_times[step])):
+                all_pass_time += sum([key * all_times[step][d][key] for key in all_times[step][d] if key <= (j - d)])
+                all_over_thread += sum([all_times[step][d][key] for key in all_times[step][d] if key <= (j - d)])
+            try:
+                avg_time.append(float('%.2f' % (all_pass_time / all_over_thread)))
+            except:
+                avg_time.append('')
+        print(avg_time)
+        series.append({'type': 'line', 'name': '阶段【%s】平均时间' % str(step + 1), 'data': avg_time})
+
+    option = {
+        'legend_data': legend_data,
+        'xAxis_data': list(range(max_time)),
+        "series": series
+    }
+    # {'name': '项目3', "data": [6, 21, 12, 19, 22, 15, 9, 2, 32, 5, 12, 36], 'type': 'line'}
+    res['option'] = option
+    return HttpResponse(json.dumps(res))

@@ -5,8 +5,8 @@
 # @File : test1.py
 # @project : Pressure
 import time
+import random
 
 
 def t(key):
-    print('我是python脚本', '我是参数：', key, time.time())
-    time.sleep(50)
+    time.sleep(random.randint(4,5))

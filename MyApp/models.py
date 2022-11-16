@@ -18,6 +18,8 @@ class DB_Tasks(models.Model):
     mq_id = models.IntegerField(default=0)
     stop = models.BooleanField(default=False)  # 终止状态
 
+    all_times = models.CharField(max_length=5000, null=True, blank=True, default=[])
+
     def __str__(self):
         return self.des
 
