@@ -39,6 +39,7 @@ def play_tasks(mq):
         # round_times = {}  # 每轮所有线程的时间
         tmp = str(time.time()).replace('.', '')
         exec('global round_times_%s\nround_times_%s = {}' % (tmp, tmp))  # 每轮所有线程的时间
+        step_times.append(eval('round_times_%s' % tmp))
         ts = []
         target = {'other': doit_other, 'python': doit_python, 'go': doit_go}[script_model]
         for n in range(thread_num):
@@ -50,7 +51,6 @@ def play_tasks(mq):
         for t in ts:
             t.join()
         print('-------------结束了一轮压测--------------')
-        step_times.append(eval('round_times_%s' % tmp))
 
     dz = {'py': 'python3', 'java': 'java', 'php': 'php'}  # 后缀对应doit_other启动对应语言的脚本命令
     message = json.loads(mq.message)
@@ -62,8 +62,10 @@ def play_tasks(mq):
     project = DB_Projects.objects.filter(id=int(task[0].project_id))[0]
     plan = eval(project.plan)
     all_times = []  # 整个任务所有阶段及轮的时间
+    all_threads = []  # 整个任务所有的线程数
     for step in plan:  # step=阶段
         step_times = []  # 每个阶段所包含的所有轮的时间
+        step_threads = []  # 每个阶段所包含的线程数
         script_model = step['name'].split('/')[0]
         script_name = step['name'].split('/')[1]
         script_params = step['script_params']
@@ -76,7 +78,7 @@ def play_tasks(mq):
             task_rounds = int(step['old_round']) * (step['old_num'].count('_') + 1)
         else:
             task_rounds = int(step['old_round'])
-
+        #############################
         for r in range(task_rounds):  # round = 5  r = 0,1,2,3,4
             if '/' in step['old_num']:  # 阶梯增压 0-10/90-5
                 mid = step['old_num']  # 10/90
@@ -90,6 +92,9 @@ def play_tasks(mq):
                 thread_num = int(mid[int(r / int(step['old_round']))])
             else:
                 thread_num = int(step['old_num'])
+            #############################
+
+            step_threads.append(thread_num)
             tr = threading.Thread(target=one_round, args=(script_path, thread_num, script_model, script_params))
             tr.daemon = True
             trs.append(tr)
@@ -104,8 +109,9 @@ def play_tasks(mq):
             tr.join()
         print('-------------结束了一个阶段--------------')
         all_times.append(step_times)
+        all_threads.append(step_threads)
     print('【整个压测任务结束】', all_times)
-    task.update(status='已结束', all_times=all_times)
+    task.update(status='已结束', all_times=all_times, all_threads=all_threads)
 
 
 if __name__ == '__main__':

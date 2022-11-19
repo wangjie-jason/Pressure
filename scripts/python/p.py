@@ -9,4 +9,4 @@ import random
 
 
 def t(key):
-    time.sleep(random.randint(4,5))
+    time.sleep(random.randint(0,10))

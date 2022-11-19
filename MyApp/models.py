@@ -17,8 +17,8 @@ class DB_Tasks(models.Model):
     status = models.CharField(max_length=10, null=True, blank=True, default='队列中')  # 队列中 ， 压测中，已结束。
     mq_id = models.IntegerField(default=0)
     stop = models.BooleanField(default=False)  # 终止状态
-
-    all_times = models.CharField(max_length=5000, null=True, blank=True, default=[])
+    all_times = models.CharField(max_length=5000, null=True, blank=True, default=[])  # 整个任务所有阶段及轮的时间
+    all_threads = models.CharField(max_length=5000, null=True, blank=True, default=[])  # 整个任务所有的线程数
 
     def __str__(self):
         return self.des
