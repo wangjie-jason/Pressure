@@ -9,4 +9,7 @@ import random
 
 
 def t(key):
-    time.sleep(random.randint(0,10))
+    res = random.randint(1, 10)
+    time.sleep(res)
+    if res % 2 == 0:
+        raise Exception

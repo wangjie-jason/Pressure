@@ -16,20 +16,29 @@ def play_tasks(mq):
     def doit_other(script_path, script_params, tmp):
         start_time = time.time()
         _bin = dz[script_name.split('.')[-1]]
-        subprocess.call(_bin + ' ' + script_path + ' ' + script_params + ' mq_id=' + str(mq.id), shell=True)
-        end_tims = time.time()
-        cha = int(end_tims - start_time)  # 执行每个线程所耗费的时间，精确到秒
-
-    def doit_python(script_path, script_params, tmp):
-        start_time = time.time()
-        exec('from scripts.python.%s import %s\n%s' % (
-            script_name.split('.')[0], script_params.split('(')[0], script_params))
+        s = subprocess.call(_bin + ' ' + script_path + ' ' + script_params + ' mq_id=' + str(mq.id), shell=True)
+        if s != 0:  # subprocess.call的返回值等于0代表成功，否则代表失败
+            exec('round_fail_threads_%s["fail"]+=1' % tmp)
         end_tims = time.time()
         cha = int(end_tims - start_time)  # 执行每个线程所耗费的时间，精确到秒
         try:
-            exec('round_times_%s[cha]+=1' % tmp)
+            exec('round_times_%s[%s]+=1' % (tmp, cha))  # 如果字典里有这个Key就直接+1
         except:
-            exec('round_times_%s[cha]=1' % tmp)
+            exec('round_times_%s[%s]=1' % (tmp, cha))  # 如果字典里没有这个Key就直接等于1
+
+    def doit_python(script_path, script_params, tmp):
+        start_time = time.time()
+        try:
+            exec('from scripts.python.%s import %s\n%s' % (
+                script_name.split('.')[0], script_params.split('(')[0], script_params))
+        except:  # 异常代表线程执行失败，则将round_fail_threads_%s中的"fail"+1来统计失败数
+            exec('round_fail_threads_%s["fail"]+=1' % tmp)
+        end_tims = time.time()
+        cha = int(end_tims - start_time)  # 执行每个线程所耗费的时间，精确到秒
+        try:
+            exec('round_times_%s[%s]+=1' % (tmp, cha))  # 如果字典里有这个Key就直接+1
+        except:
+            exec('round_times_%s[%s]=1' % (tmp, cha))  # 如果字典里没有这个Key就直接等于1
 
     def doit_go(script_path, script_params, tmp):
         print('go')
@@ -40,6 +49,10 @@ def play_tasks(mq):
         tmp = str(time.time()).replace('.', '')
         exec('global round_times_%s\nround_times_%s = {}' % (tmp, tmp))  # 每轮所有线程的时间
         step_times.append(eval('round_times_%s' % tmp))
+
+        exec('global round_fail_threads_%s\nround_fail_threads_%s = {"fail":0}' % (tmp, tmp))  # 每轮所有失败的线程数
+        step_fail_threads.append(eval('round_fail_threads_%s' % tmp))
+
         ts = []
         target = {'other': doit_other, 'python': doit_python, 'go': doit_go}[script_model]
         for n in range(thread_num):
@@ -63,9 +76,11 @@ def play_tasks(mq):
     plan = eval(project.plan)
     all_times = []  # 整个任务所有阶段及轮的时间
     all_threads = []  # 整个任务所有的线程数
+    all_fail_threads = []  # 整个任务所有失败的线程数
     for step in plan:  # step=阶段
         step_times = []  # 每个阶段所包含的所有轮的时间
         step_threads = []  # 每个阶段所包含的线程数
+        step_fail_threads = []  # 每个阶段失败的线程数
         script_model = step['name'].split('/')[0]
         script_name = step['name'].split('/')[1]
         script_params = step['script_params']
@@ -110,8 +125,10 @@ def play_tasks(mq):
         print('-------------结束了一个阶段--------------')
         all_times.append(step_times)
         all_threads.append(step_threads)
+        all_fail_threads.append(step_fail_threads)
     print('【整个压测任务结束】', all_times)
-    task.update(status='已结束', all_times=all_times, all_threads=all_threads)
+    print(all_fail_threads)
+    task.update(status='已结束', all_times=all_times, all_threads=all_threads, all_fail_threads=all_fail_threads)
 
 
 if __name__ == '__main__':

@@ -186,23 +186,34 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
     all_times = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_times)
     # all_threads从数据库拿到的整个任务所有的线程数集合[[10,10,10,10,10],[],[]]
     all_threads = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_threads)
+    # all_threads从数据库拿到的整个任务所有的线程数集合[[{'fail': 44}, {'fail': 50}], [{'fail': 4}, {'fail': 5}]]
+    all_fail_threads = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_fail_threads)
     print(all_times)
     print(all_threads)
+    print(all_fail_threads)
     legend_data = []  # echarts的标题
     max_time = 0  # 每个阶段所用的最大时间，用来控制echarts的y轴的最大值
     series = []  # echarts的y轴的数据
     x_pass = 0  # 计算x轴起点的变量，区分每阶段的起始点
     time_detail = []  # 报告所需的时间详情[step_avg_time,step_50_time,step_80_time,step_90_time,step_95_time,step_99_time,]
     for step in range(len(all_times)):  # step是下标，该循环遍历所有的阶段
-        ###########################   计算time_detail，也就是表格的数据
-        step_detail = {}
+        ##########################   计算time_detail，也就是表格的数据
+        step_detail = {}  # 前端表格所需的元数据
         step_all_time = 0  # 阶段总消耗时间
+        step_min = 9999999  # 设置一个很大的值，使step_min不断与自身去比，每次取最小值再比较，从而求出阶段内的最小值
+        step_max = 0
         for d in all_times[step]:  # d是每一轮的时间字典{0:1,2:3,3:2}
             step_all_time += sum([key * d[key] for key in d])  # [0,6,6]->12->加等得出每一阶段的总时间
-        step_detail['step_avg_time'] = '%.2f' % (step_all_time / sum(all_threads[step]))  # 每阶段平均时间=每阶段总时间/每阶段总线程数
+            step_min = min(step_min, min([key for key in d]))  # step_min不断与每一轮的最小时间去比，每次取最小值再赋值给自己，从而求出阶段内的最小时间
+            step_max = max(step_max, max([key for key in d]))  # step_max不断与每一轮的最大时间去比，每次取最大值再赋值给自己，从而求出阶段内的最大时间
 
-        child = 0  # 设置一个不断成长的时间，当已完成线程到50%，80%，90%，95%，99%时，将child赋值给对应的step_xx_line
-        all_threads_count = sum(all_threads[step])  # 阶段总线程数
+            step_detail['step_min'] = str(step_min) + 's'
+            step_detail['step_max'] = str(step_max) + 's'
+            step_detail['step_avg_time'] = '%.2f' % (step_all_time / sum(all_threads[step]))  # 每阶段平均时间=每阶段总时间/每阶段总线程数
+            child = 0  # 设置一个不断成长的时间，当已完成线程到50%，80%，90%，95%，99%时，将child赋值给对应的step_xx_line
+            all_threads_count = sum(all_threads[step])  # 阶段总线程数
+            step_detail['step_fail'] = '%.2f' % (
+                    sum([i['fail'] for i in all_fail_threads[step]]) / all_threads_count * 100) + '%'
         while True:
             over_thread_count = 0  # 阶段内已经结束的线程
             for d in all_times[step]:  # d是每一轮的时间字典{0:1,2:3,3:2}
@@ -222,18 +233,21 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
             break
 
         time_detail.append(step_detail)
-        ###############################
+        ####################################################################
 
         # -----------------------计算折线图数据
         legend_data.append('阶段【%s】平均时间' % str(step + 1))
-        legend_data.append('阶段【%s】线程数' % str(step + 1))
+        legend_data.append('阶段【%s】在跑线程数' % str(step + 1))
+        legend_data.append('阶段【%s】错误线程数' % str(step + 1))
+
         max_tmp = max([max(all_times[step][d]) + d for d in range(len(all_times[step]))])  # 每个阶段所用的最大时间
         max_time += max_tmp + 1  # +1是因为每轮直接相隔1s
         avg_time = [''] * x_pass  # 平均时间
-        threads_ = [''] * x_pass  # 执行中的线程数
+        run_threads = [''] * x_pass  # 执行中的线程数
+        fail_threads = [''] * x_pass  # 失败的线程数
         x_pass += max_tmp + 1  # +1是因为每轮直接相隔1s
-
         all_begin_threads = 0  # 已经启动的线程数
+        have_fail_threads = 0  # 累加的错误线程数
 
         for j in range(max_tmp + 1):  # 该循环遍历阶段的每个自然秒，j代表已经经过的自然秒
             all_pass_time = 0  # 总消耗的时间
@@ -247,17 +261,27 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
                         100 if request.GET['bh_switch'] == 'true' else 1))  # 平均时间=总消耗的时间/总结束的线程数
             except:  # 0不能作为除数，所以当总结束的线程数为0时，直接赋值为空
                 avg_time.append('')
+
             try:  # 按自然秒从阶段内取已经开始的线程数，all_threads[step]=[10,10,10]
                 all_begin_threads += all_threads[step][j]
             except:  # 防止下标越界，当j的值超过阶段all_threads[step]的下标时，直接pass
                 pass
-            threads_.append(all_begin_threads - all_over_thread)  # 执行中的线程数=已经启动的线程数-总结束的线程数
-            # print(all_begin_threads)
-        # print(avg_time)
-        series.append({'type': 'line', 'name': '阶段【%s】平均时间' % str(step + 1), 'data': avg_time})
-        series.append({'type': 'line', 'name': '阶段【%s】线程数' % str(step + 1), 'data': threads_})
+            run_threads.append(all_begin_threads - all_over_thread)  # 执行中的线程数=已经启动的线程数-总结束的线程数
 
-    option = {
+            try:  # 按自然秒从阶段内取错误的线程数，all_fail_threads[step]=[{'fail': 44}, {'fail': 50}]
+                have_fail_threads += all_fail_threads[step][j]['fail']
+            except:  # 防止下标越界，当j的值超过阶段all_fail_threads[step]的下标时，直接pass
+                pass
+            fail_threads.append(have_fail_threads)
+
+        # print(all_begin_threads)
+        # print(avg_time)
+        print('fail_threads', fail_threads)
+        series.append({'color': 'blue', 'type': 'line', 'name': '阶段【%s】平均时间' % str(step + 1), 'data': avg_time})
+        series.append({'color': 'green', 'type': 'line', 'name': '阶段【%s】在跑线程数' % str(step + 1), 'data': run_threads})
+        series.append({'color': 'red', 'type': 'line', 'name': '阶段【%s】错误线程数' % str(step + 1), 'data': fail_threads})
+
+    option = {  # echarts元数据
         'legend_data': legend_data,
         'xAxis_data': list(range(max_time)),
         "series": series
@@ -266,4 +290,18 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
     res['option'] = option
     res['thread_detail'] = all_threads
     res['time_detail'] = time_detail
+
+    style = {  # echarts样式
+        "label": {
+            "show": True,
+            "position": "bottom",
+            "textStyle": {
+                "fontSize": 10
+            }
+        }
+    }
+    for i in range(len(res['option']['series'])):
+        if '平均时间' not in res['option']['series'][i]['name']:
+            res['option']['series'][i].update(style)
+
     return HttpResponse(json.dumps(res))
