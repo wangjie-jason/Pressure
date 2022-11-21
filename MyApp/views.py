@@ -88,6 +88,7 @@ def get_project_detail(request):
     project_id = request.GET['project_id']
     project_detail = list(DB_Projects.objects.filter(id=project_id).values())[0]
     project_detail['plan'] = eval(project_detail['plan'])
+    project_detail['variable'] = eval(project_detail['variable'])
     return HttpResponse(json.dumps(project_detail), content_type='application/json')
 
 

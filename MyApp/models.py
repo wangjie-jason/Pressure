@@ -5,6 +5,7 @@ from django.db import models
 class DB_Projects(models.Model):
     name = models.CharField(max_length=30, null=True, blank=True, default='new project')
     plan = models.CharField(max_length=1000, null=True, blank=True, default='[]')  # 压测计划，专用的关键字语法。（可保存成模版）
+    variable = models.CharField(max_length=1000, null=True, blank=True, default='[]')  # 变量设置[{'key':'a','value':1},{}]
 
     def __str__(self):
         return self.name

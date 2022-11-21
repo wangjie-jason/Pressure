@@ -4,12 +4,34 @@
 # @Author : wangjie
 # @File : play.py
 # @project : Pressure
+import re
 import subprocess, threading, json, time, os, sys, django
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', '%s.settings' % 'Pressure')  # 引号中请输入您的setting父级目录名
 django.setup()
 from MyApp.models import DB_Tasks, DB_Projects, DB_django_task_mq
+
+
+def read_sp(variable, script_params, script_model):  # 转换script_params
+    variable = eval(variable)  # [{'key':'a','value':1},{},{}]
+    old = {}
+    for i in variable:
+        old[i['key']] = eval(i['value'])
+    if script_model == 'other':
+        p_list = []
+        params = [i for i in script_params.split(' ') if i]
+        for i in params:
+            p_list.append('"' + repr(old[i]) + '"')
+        end = ' '.join(p_list)
+    elif script_model == 'python':
+        p_list = []
+        params = re.findall(r'\((.*?)\)',script_params)[0].split(',')
+        for i in params:
+            p_list.append(repr(old[i]))
+        end = script_params.split('(')[0] + '(' + ','.join(p_list) + ')'
+
+    return end
 
 
 def play_tasks(mq):
@@ -46,6 +68,8 @@ def play_tasks(mq):
     def one_round(script_path, thread_num, script_model, script_params):
         # global round_times
         # round_times = {}  # 每轮所有线程的时间
+        script_params = read_sp(project.variable, script_params, script_model)
+
         tmp = str(time.time()).replace('.', '')
         exec('global round_times_%s\nround_times_%s = {}' % (tmp, tmp))  # 每轮所有线程的时间
         step_times.append(eval('round_times_%s' % tmp))

@@ -8,8 +8,5 @@ import time
 import random
 
 
-def t(key):
-    res = random.randint(1, 10)
-    time.sleep(res)
-    if res % 2 == 0:
-        raise Exception
+def t(a, b):
+    print(a, b, type(a), type(b))
