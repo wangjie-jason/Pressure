@@ -189,9 +189,9 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
     all_threads = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_threads)
     # all_threads从数据库拿到的整个任务所有的线程数集合[[{'fail': 44}, {'fail': 50}], [{'fail': 4}, {'fail': 5}]]
     all_fail_threads = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_fail_threads)
-    print(all_times)
-    print(all_threads)
-    print(all_fail_threads)
+    print('all_times:', all_times)
+    print('all_threads:', all_threads)
+    print('all_fail_threads:', all_fail_threads)
     legend_data = []  # echarts的标题
     max_time = 0  # 每个阶段所用的最大时间，用来控制echarts的y轴的最大值
     series = []  # echarts的y轴的数据
@@ -275,9 +275,9 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
                 pass
             fail_threads.append(have_fail_threads)
 
-        # print(all_begin_threads)
-        # print(avg_time)
-        print('fail_threads', fail_threads)
+        # print('all_begin_threads:', all_begin_threads)
+        # print('avg_time:', avg_time)
+        print('fail_threads:', fail_threads)
         series.append({'color': 'blue', 'type': 'line', 'name': '阶段【%s】平均时间' % str(step + 1), 'data': avg_time})
         series.append({'color': 'green', 'type': 'line', 'name': '阶段【%s】在跑线程数' % str(step + 1), 'data': run_threads})
         series.append({'color': 'red', 'type': 'line', 'name': '阶段【%s】错误线程数' % str(step + 1), 'data': fail_threads})

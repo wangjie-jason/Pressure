@@ -8,5 +8,5 @@ import time
 import random
 
 
-def t(a, b):
+def t(a,b):
     print(a, b, type(a), type(b))

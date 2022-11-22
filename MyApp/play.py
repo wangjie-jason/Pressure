@@ -10,7 +10,24 @@ import subprocess, threading, json, time, os, sys, django
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', '%s.settings' % 'Pressure')  # 引号中请输入您的setting父级目录名
 django.setup()
+
 from MyApp.models import DB_Tasks, DB_Projects, DB_django_task_mq
+from random import randint  # read_sp解析随机数字用的，不要删
+from faker import Faker  # mock数据的库，read_sp解析随机前端传过来的faker方法用的
+
+fake = Faker(locale='zh_CN')  # 使mock的数据是中国的（姓名、身份证等。。。）
+
+
+def str_time_s():
+    return str(time.time())[:10]
+
+
+def str_time_ms():
+    return str(time.time())[:14]
+
+
+def str_time_μs():
+    return str(time.time())
 
 
 def read_sp(variable, script_params, script_model):  # 转换script_params
@@ -26,9 +43,14 @@ def read_sp(variable, script_params, script_model):  # 转换script_params
         end = ' '.join(p_list)
     elif script_model == 'python':
         p_list = []
-        params = re.findall(r'\((.*?)\)',script_params)[0].split(',')
+        params = re.findall(r'\((.*?)\)', script_params)[0].split(',')
         for i in params:
-            p_list.append(repr(old[i]))
+            try:
+                eval(i)
+                p_list.append(repr(eval(i)))
+            except:
+                p_list.append(repr(old[i]))
+        print('p_list:', p_list)
         end = script_params.split('(')[0] + '(' + ','.join(p_list) + ')'
 
     return end
@@ -150,8 +172,9 @@ def play_tasks(mq):
         all_times.append(step_times)
         all_threads.append(step_threads)
         all_fail_threads.append(step_fail_threads)
-    print('【整个压测任务结束】', all_times)
-    print(all_fail_threads)
+    print('【整个压测任务结束】')
+    print('all_times:', all_times)
+    print('all_fail_threads:', all_fail_threads)
     task.update(status='已结束', all_times=all_times, all_threads=all_threads, all_fail_threads=all_fail_threads)
 
 
