@@ -30,11 +30,21 @@ def str_time_μs():
     return str(time.time())
 
 
-def read_sp(variable, script_params, script_model):  # 转换script_params
-    variable = eval(variable)  # [{'key':'a','value':1},{},{}]
+def data_file(row, index):  # 每个线程内有几个变量就执行几次
+    content = data_file_content_list[row].replace('\n', '').split(' ')[index]
+    try:
+        content = eval(content)
+    except:
+        pass
+    return content
+
+
+def read_sp(variable, script_params, script_model):  # 将前端变量设置处的参数转换成script_params
+    variable = eval(variable)  # [{'key':'a','value':1},{'key':b,'value':2},{}]
     old = {}
+    row = randint(0, len(data_file_content_list) - 1)  # data_file()内使用的，在data_file()前赋值，防止row在一个线程内多次随机
     for i in variable:
-        old[i['key']] = eval(i['value'])
+        old[i['key']] = eval(i['value'])  # {'a':1,'b':2}
     if script_model == 'other':
         p_list = []
         params = [i for i in script_params.split(' ') if i]
@@ -43,21 +53,23 @@ def read_sp(variable, script_params, script_model):  # 转换script_params
         end = ' '.join(p_list)
     elif script_model == 'python':
         p_list = []
-        params = re.findall(r'\((.*?)\)', script_params)[0].split(',')
+        params = re.findall(r'\((.*?)\)', script_params)[0].split(',')  # ['a','b'] 或 ['100','200']
         for i in params:
-            try:
-                eval(i)
-                p_list.append(repr(eval(i)))
-            except:
-                p_list.append(repr(old[i]))
+            try:  # ['100','200']能求值走这里
+                eval(i)  # 100
+                p_list.append(repr(eval(i)))  # 100
+            except:  # ['a','b']不能求值走这里
+                p_list.append(repr(old[i]))  # 得出a=1
         print('p_list:', p_list)
         end = script_params.split('(')[0] + '(' + ','.join(p_list) + ')'
+        print('end：', end)
 
     return end
 
 
 def play_tasks(mq):
     def doit_other(script_path, script_params, tmp):
+        script_params = read_sp(project.variable, script_params, script_model)
         start_time = time.time()
         _bin = dz[script_name.split('.')[-1]]
         s = subprocess.call(_bin + ' ' + script_path + ' ' + script_params + ' mq_id=' + str(mq.id), shell=True)
@@ -71,6 +83,7 @@ def play_tasks(mq):
             exec('round_times_%s[%s]=1' % (tmp, cha))  # 如果字典里没有这个Key就直接等于1
 
     def doit_python(script_path, script_params, tmp):
+        script_params = read_sp(project.variable, script_params, script_model)
         start_time = time.time()
         try:
             exec('from scripts.python.%s import %s\n%s' % (
@@ -90,8 +103,6 @@ def play_tasks(mq):
     def one_round(script_path, thread_num, script_model, script_params):
         # global round_times
         # round_times = {}  # 每轮所有线程的时间
-        script_params = read_sp(project.variable, script_params, script_model)
-
         tmp = str(time.time()).replace('.', '')
         exec('global round_times_%s\nround_times_%s = {}' % (tmp, tmp))  # 每轮所有线程的时间
         step_times.append(eval('round_times_%s' % tmp))
@@ -123,6 +134,15 @@ def play_tasks(mq):
     all_times = []  # 整个任务所有阶段及轮的时间
     all_threads = []  # 整个任务所有的线程数
     all_fail_threads = []  # 整个任务所有失败的线程数
+
+    # 拿出前端变量设置里传的文件数据 ##########
+    file_name = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data_files',
+                             'data_file_' + str(project.id))
+    with open(file_name) as fp:
+        global data_file_content_list
+        data_file_content_list = fp.readlines()
+        #######################
+
     for step in plan:  # step=阶段
         step_times = []  # 每个阶段所包含的所有轮的时间
         step_threads = []  # 每个阶段所包含的线程数

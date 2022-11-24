@@ -36,4 +36,5 @@ urlpatterns = [
     path('stop_task/', views.stop_task),
     path('clear_all/', views.clear_all),
     path('get_all_times/', views.get_all_times),
+    path('upload_data_file/',views.upload_data_file)
 ]

@@ -180,6 +180,15 @@ def clear_all(request):
     return HttpResponseRedirect('/')
 
 
+def upload_data_file(request):
+    project_id = request.GET['project_id']
+    my_file = request.FILES.get('data_file')
+    with open('data_files/data_file_' + project_id, 'wb+') as fp:
+        for i in my_file.chunks():
+            fp.write(i)
+    return HttpResponse('')
+
+
 def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{0:2,1:3,4:2},{},{}],已经启动的总线程数-已经结束的线程数
     task_id = request.GET['task_id']
     res = {}  # 最终返回的大字典
@@ -187,7 +196,7 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
     all_times = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_times)
     # all_threads从数据库拿到的整个任务所有的线程数集合[[10,10,10,10,10],[],[]]
     all_threads = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_threads)
-    # all_threads从数据库拿到的整个任务所有的线程数集合[[{'fail': 44}, {'fail': 50}], [{'fail': 4}, {'fail': 5}]]
+    # all_threads从数据库拿到的整个任务所有的线程数集合[[{'fail': 44,'end_time':10}, {'fail': 50,'end_time':6}], [{}, {}]]
     all_fail_threads = eval(DB_Tasks.objects.filter(id=int(task_id))[0].all_fail_threads)
     print('all_times:', all_times)
     print('all_threads:', all_threads)
@@ -256,6 +265,8 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
             for d in range(len(all_times[step])):  # d代表该阶段内的轮数,all_times[step][d]是每一轮的数据{0:1,2:3,3:2}，j-d代表补偿每轮中间相隔的那1s
                 all_pass_time += sum([key * all_times[step][d][key] for key in all_times[step][d] if key <= (j - d)])
                 all_over_thread += sum([all_times[step][d][key] for key in all_times[step][d] if key <= (j - d)])
+                # 给all_fail_threads里增加end_time字段得出每轮结束时的消耗的最大时间，d是每轮相隔的那1s
+                all_fail_threads[step][d]['end_time'] = d + max([key for key in all_times[step][d]])
             try:  # 总结束的线程数不为0时执行
                 avg_time.append(  # (100 if request.GET['bh_switch'] == 'true' else 1))：当bh_switch=true时，将平均时间*100倍
                     float('%.2f' % (all_pass_time / all_over_thread)) * (
@@ -269,8 +280,11 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
                 pass
             run_threads.append(all_begin_threads - all_over_thread)  # 执行中的线程数=已经启动的线程数-总结束的线程数
 
-            try:  # 按自然秒从阶段内取错误的线程数，all_fail_threads[step]=[{'fail': 44}, {'fail': 50}]
-                have_fail_threads += all_fail_threads[step][j]['fail']
+            try:  # 按自然秒从阶段内取错误的线程数，all_fail_threads[step]=[{'fail': 44,'end_time':11}, {'fail': 50'end_time':8}]
+                # have_fail_threads += all_fail_threads[step][j]['fail'] # 这种是每轮开始前统计，下面是每轮结束时统计，更准确
+                for af in all_fail_threads[step]:  # 遍历所有轮，af：{'fail': 44,'end_time':11}
+                    if j == af['end_time']:  # 如果自然秒j等于这一轮的最大结束时间，也就是这一轮结束后，再统计错误数
+                        have_fail_threads += af['fail']
             except:  # 防止下标越界，当j的值超过阶段all_fail_threads[step]的下标时，直接pass
                 pass
             fail_threads.append(have_fail_threads)
