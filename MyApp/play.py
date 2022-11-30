@@ -40,9 +40,12 @@ def data_file(row, index):  # 每个线程内有几个变量就执行几次
 
 
 def read_sp(variable, script_params, script_model):  # 将前端变量设置处的参数转换成script_params
-    variable = eval(variable)  # [{'key':'a','value':1},{'key':b,'value':2},{}]
+    variable = eval(variable)  # [{'key':'a','value':'1'},{'key':b,'value':'2'},{}]
     old = {}
-    row = randint(0, len(data_file_content_list) - 1)  # data_file()内使用的，在data_file()前赋值，防止row在一个线程内多次随机
+    try:  # data_file_content_list存在就给row赋值
+        row = randint(0, len(data_file_content_list) - 1)  # data_file()内使用的，在data_file()前赋值，防止row在一个线程内多次随机
+    except:  # data_file_content_list不存在就直接pass
+        pass
     for i in variable:
         old[i['key']] = eval(i['value'])  # {'a':1,'b':2}
     if script_model == 'other':
@@ -59,9 +62,9 @@ def read_sp(variable, script_params, script_model):  # 将前端变量设置处�
                 eval(i)  # 100
                 p_list.append(repr(eval(i)))  # 100
             except:  # ['a','b']不能求值走这里
-                p_list.append(repr(old[i]))  # 得出a=1
-        print('p_list:', p_list)
-        end = script_params.split('(')[0] + '(' + ','.join(p_list) + ')'
+                p_list.append(repr(old[i]))  # 得出old['a']:1,repr(old['a']:'1'
+        print('p_list:', p_list)  # p_list：['1','2']
+        end = script_params.split('(')[0] + '(' + ','.join(p_list) + ')'  # ''.join拼接时会扒一层双引号或单引号，得出end='t(1,2)'
         print('end：', end)
 
     return end
@@ -138,10 +141,13 @@ def play_tasks(mq):
     # 拿出前端变量设置里传的文件数据 ##########
     file_name = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data_files',
                              'data_file_' + str(project.id))
-    with open(file_name) as fp:
-        global data_file_content_list
-        data_file_content_list = fp.readlines()
-        #######################
+    try:  # 项目已上传文件，即file_name存在，就走这个分支
+        with open(file_name) as fp:
+            global data_file_content_list
+            data_file_content_list = fp.readlines()
+    except:  # file_name不存在，就直接pass
+        pass
+    #######################
 
     for step in plan:  # step=阶段
         step_times = []  # 每个阶段所包含的所有轮的时间

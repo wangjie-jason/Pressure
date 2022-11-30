@@ -251,7 +251,11 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
         legend_data.append('阶段【%s】错误线程数' % str(step + 1))
 
         max_tmp = max([max(all_times[step][d]) + d for d in range(len(all_times[step]))])  # 每个阶段所用的最大时间
-        max_time += max_tmp + 1  # +1是因为每轮直接相隔1s
+        try:
+            step_detail['step_tps'] = '%d req/s' % (all_threads_count / max_tmp)  # 阶段tps = 阶段总请求数/阶段总时间（即阶段最大时间）
+        except:
+            step_detail['step_tps'] = '%d req/s' % all_threads_count  # max_tmp为0的时候，代表1s内直接处理了所有的线程数
+        max_time += max_tmp + 1  # +1是补偿每轮之间相隔的那1s
         avg_time = [''] * x_pass  # 平均时间
         run_threads = [''] * x_pass  # 执行中的线程数
         fail_threads = [''] * x_pass  # 失败的线程数
