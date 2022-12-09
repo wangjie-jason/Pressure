@@ -42,13 +42,38 @@ def register_act(request):
 
 
 def get_echarts_data(request):
+    import datetime as dt
+    today = dt.datetime.now()
+    x_time = [str(dt.datetime.date(today - dt.timedelta(days=i))) for i in range(7)]  # 横轴时间，里面都是字符串日期
+
+    data = []  # 纵轴数据
+    tasks = [t['stime'] for t in DB_Tasks.objects.values('stime')]  # ['2022-12-08 17:36:13', '2022-12-08 17:36:35']
+    new_tasks = []
+    for t in tasks:
+        date_ = t.split(' ')[0]  # date_=2022-12-08
+        new_tasks.append(date_)
+    new_tasks = new_tasks[::-1]
+    # print(x_time)
+    # print(new_tasks)
+    for i in x_time:
+        tmp = 0
+        while True:
+            if new_tasks:  # 如果new_tasks里有数据，即还存在未比完的数据
+                if new_tasks[0] == i:  # 如果最新的一条new_tasks与i相等
+                    tmp += 1  # 就将该天次数加1
+                    new_tasks.pop(0)  # 并且将比完的数据删除
+                else:  # 如果最新的一条new_tasks与i不相等，即代表该日期已经没有任务了，就跳出循环，去查下一天的任务
+                    break
+            else:  # 如果new_tasks里没数据了，即都比完并且删除了，就直接打破循环
+                break
+
+        data.append(tmp)
+
     res = {
-        'legend_data': ['项目1', '项目2', '项目3'],
-        'xAxis_data': ['9-15', '9-16', '9-17', '9-18', '9-19', '9-20', '9-21', '9-22', '9-23', '9-24', '9-25', '9-26'],
+        'legend_data': ['压测次数'],
+        'xAxis_data': x_time[::-1],
         "series": [
-            {'name': '项目1', "data": [3, 1, 2, 29, 32, 12, 52, 23, 51, 35, 26, 16], 'type': 'line'},
-            {'name': '项目2', "data": [33, 12, 24, 2, 3, 2, 5, 13, 21, 25, 26, 26], 'type': 'line'},
-            {'name': '项目3', "data": [6, 21, 12, 19, 22, 15, 9, 2, 32, 5, 12, 36], 'type': 'line'}
+            {'name': '压测次数', "data": data[::-1], 'type': 'line'},
         ]
     }
     style = {
@@ -113,7 +138,8 @@ def get_script_list(request):
     # script_list = []
     # for d in ['other', 'python', 'go']:
     #     script_list += [d + '/' + i for i in os.listdir(os.path.join('scripts', d))]
-    script_list = [d + '/' + i for d in ['other', 'go', 'python'] for i in os.listdir(os.path.join('scripts', d))]
+    script_list = [d + '/' + i for d in ['other', 'go', 'python'] for i in os.listdir(os.path.join('scripts', d)) if
+                   '.' in i]  # if '.' in i 过滤掉缓存文件，正常文件都有.py这种结尾，缓存文件没有
     # script_list = sum([[d + '/' + i for i in os.listdir(os.path.join('scripts', d))] for d in ['other', 'go', 'python']], [])
     # script_list = list(chain.from_iterable( numpy.array( [ [d+'/'+i  for i in os.listdir(os.path.join('scripts',d))]   for d in ['other','go','python']  ])))
     return HttpResponse(json.dumps(script_list))
@@ -189,6 +215,30 @@ def upload_data_file(request):
     return HttpResponse('')
 
 
+def get_home_data(request):
+    home_data = {}
+
+    home_data['all_projects_count'] = len(DB_Projects.objects.all())
+    home_data['all_pressures_count'] = len(DB_Tasks.objects.all())
+    home_data['all_scripts_count'] = len(  # if '.' in i 过滤掉缓存文件，正常文件都有.py这种结尾，缓存文件没有
+        [i for d in ['other', 'go', 'python'] for i in os.listdir(os.path.join('scripts', d)) if '.' in i])
+    home_data['all_logs_count'] = len([i for i in os.listdir(os.path.join('scripts', 'logs'))])
+    home_data['all_users_count'] = len(User.objects.all())
+
+    home_data['run_tasks'] = []
+    for task in DB_Tasks.objects.filter(status='压测中'):
+        project = DB_Projects.objects.filter(id=int(task.project_id))[0]
+        tmp = {
+            "project_id": project.id,
+            "project_name": project.name,
+            "des": task.des,
+            "progress": task.progress,
+            "plan": eval(project.plan)
+        }
+        home_data['run_tasks'].append(tmp)
+    return HttpResponse(json.dumps(home_data))
+
+
 def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{0:2,1:3,4:2},{},{}],已经启动的总线程数-已经结束的线程数
     task_id = request.GET['task_id']
     res = {}  # 最终返回的大字典
@@ -251,10 +301,9 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
         legend_data.append('阶段【%s】错误线程数' % str(step + 1))
 
         max_tmp = max([max(all_times[step][d]) + d for d in range(len(all_times[step]))])  # 每个阶段所用的最大时间
-        try:
-            step_detail['step_tps'] = '%d req/s' % (all_threads_count / max_tmp)  # 阶段tps = 阶段总请求数/阶段总时间（即阶段最大时间）
-        except:
-            step_detail['step_tps'] = '%d req/s' % all_threads_count  # max_tmp为0的时候，代表1s内直接处理了所有的线程数
+
+        step_detail['step_tps'] = '%.2f req/s' % (  # (max_tmp if max_tmp else 1)三元表达式代表，当max_tmp=0时，由于分母不能为0，所以给它赋值成1
+                all_threads_count / (max_tmp if max_tmp else 1))  # 阶段tps = 阶段总请求数/阶段总时间（即阶段最大时间）
         max_time += max_tmp + 1  # +1是补偿每轮之间相隔的那1s
         avg_time = [''] * x_pass  # 平均时间
         run_threads = [''] * x_pass  # 执行中的线程数
@@ -291,7 +340,8 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
                         have_fail_threads += af['fail']
             except:  # 防止下标越界，当j的值超过阶段all_fail_threads[step]的下标时，直接pass
                 pass
-            fail_threads.append(have_fail_threads)
+
+            fail_threads.append((have_fail_threads if have_fail_threads else ''))  # 当have_fail_threads为0时赋值为空，避免在x轴上画横线
 
         # print('all_begin_threads:', all_begin_threads)
         # print('avg_time:', avg_time)

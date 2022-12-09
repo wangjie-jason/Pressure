@@ -39,13 +39,11 @@ def data_file(row, index):  # 每个线程内有几个变量就执行几次
     return content
 
 
-def read_sp(variable, script_params, script_model):  # 将前端变量设置处的参数转换成script_params
-    variable = eval(variable)  # [{'key':'a','value':'1'},{'key':b,'value':'2'},{}]
+def read_sp(script_params, script_model):  # 将前端变量设置处的参数转换成script_params
     old = {}
-    try:  # data_file_content_list存在就给row赋值
+    if use_file:  # 需要使用数据文件时，才求row，否则不求
         row = randint(0, len(data_file_content_list) - 1)  # data_file()内使用的，在data_file()前赋值，防止row在一个线程内多次随机
-    except:  # data_file_content_list不存在就直接pass
-        pass
+
     for i in variable:
         old[i['key']] = eval(i['value'])  # {'a':1,'b':2}
     if script_model == 'other':
@@ -57,22 +55,23 @@ def read_sp(variable, script_params, script_model):  # 将前端变量设置处�
     elif script_model == 'python':
         p_list = []
         params = re.findall(r'\((.*?)\)', script_params)[0].split(',')  # ['a','b'] 或 ['100','200']
-        for i in params:
-            try:  # ['100','200']能求值走这里
-                eval(i)  # 100
-                p_list.append(repr(eval(i)))  # 100
-            except:  # ['a','b']不能求值走这里
-                p_list.append(repr(old[i]))  # 得出old['a']:1,repr(old['a']:'1'
-        print('p_list:', p_list)  # p_list：['1','2']
+        if params != ['']:  # params不为空时，才走for循环的逻辑，防止不需要传参的压测脚本解析参数时报错
+            for i in params:
+                try:  # ['100','200']能求值走这里
+                    eval(i)  # 100
+                    p_list.append(repr(eval(i)))  # 100
+                except:  # ['a','b']不能求值走这里
+                    p_list.append(repr(old[i]))  # 得出old['a']:1,repr(old['a']:'1'
+        # print('p_list:', p_list)  # p_list：['1','2']
         end = script_params.split('(')[0] + '(' + ','.join(p_list) + ')'  # ''.join拼接时会扒一层双引号或单引号，得出end='t(1,2)'
-        print('end：', end)
+        # print('end：', end)
 
     return end
 
 
 def play_tasks(mq):
     def doit_other(script_path, script_params, tmp):
-        script_params = read_sp(project.variable, script_params, script_model)
+        script_params = read_sp(script_params, script_model)
         start_time = time.time()
         _bin = dz[script_name.split('.')[-1]]
         s = subprocess.call(_bin + ' ' + script_path + ' ' + script_params + ' mq_id=' + str(mq.id), shell=True)
@@ -86,12 +85,13 @@ def play_tasks(mq):
             exec('round_times_%s[%s]=1' % (tmp, cha))  # 如果字典里没有这个Key就直接等于1
 
     def doit_python(script_path, script_params, tmp):
-        script_params = read_sp(project.variable, script_params, script_model)
+        script_params = read_sp(script_params, script_model)
         start_time = time.time()
         try:
             exec('from scripts.python.%s import %s\n%s' % (
                 script_name.split('.')[0], script_params.split('(')[0], script_params))
-        except:  # 异常代表线程执行失败，则将round_fail_threads_%s中的"fail"+1来统计失败数
+        except Exception as e:  # 异常代表线程执行失败，则将round_fail_threads_%s中的"fail"+1来统计失败数
+            print("异常原因：",e)
             exec('round_fail_threads_%s["fail"]+=1' % tmp)
         end_tims = time.time()
         cha = int(end_tims - start_time)  # 执行每个线程所耗费的时间，精确到秒
@@ -138,16 +138,35 @@ def play_tasks(mq):
     all_threads = []  # 整个任务所有的线程数
     all_fail_threads = []  # 整个任务所有失败的线程数
 
-    # 拿出前端变量设置里传的文件数据 ##########
-    file_name = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data_files',
-                             'data_file_' + str(project.id))
-    try:  # 项目已上传文件，即file_name存在，就走这个分支
-        with open(file_name) as fp:
-            global data_file_content_list
-            data_file_content_list = fp.readlines()
-    except:  # file_name不存在，就直接pass
-        pass
+    # 是否需要使用数据文件
+    global variable
+    variable = eval(project.variable)  # 也在read_sp()内使用，数据格式为[{'key':'a','value':'1'},{'key':b,'value':'2'},{}]
+    global use_file
+    use_file = False  # 判断是否需要使用数据文件的开关
+    for v in variable:
+        if v['value'][:9] == 'data_file':
+            use_file = True
+
+    if use_file:  # 如果需要使用数据文件
+        # 拿出前端变量设置里传的文件数据 ##########
+        file_name = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data_files',
+                                 'data_file_' + str(project.id))
+        if os.path.exists(file_name):  # 项目已上传文件，即file_name存在
+            with open(file_name) as fp:
+                global data_file_content_list
+                data_file_content_list = fp.readlines()
+                if len(data_file_content_list) == 0:  # 如果文件内容为空
+                    task.update(status='异常[文件内容为空]', all_times=all_times, all_threads=all_threads,
+                                all_fail_threads=all_fail_threads)
+                    raise Exception('任务终止！文件内容为空')
+        else:  # 如果项目未上传文件，即file_name不存在
+            task.update(status='异常[文件不存在]', all_times=all_times, all_threads=all_threads,
+                        all_fail_threads=all_fail_threads)
+            raise Exception('任务终止！文件不存在')
+
     #######################
+    all_steps = len(plan)  # 整个压测计划的阶段数
+    over_steps = 0  # 已经结束的阶段数，初始值为0
 
     for step in plan:  # step=阶段
         step_times = []  # 每个阶段所包含的所有轮的时间
@@ -198,9 +217,11 @@ def play_tasks(mq):
         all_times.append(step_times)
         all_threads.append(step_threads)
         all_fail_threads.append(step_fail_threads)
+        over_steps += 1  # 每结束一个阶段，整个压测计划的结束阶段就+1
+        task.update(progress=float(over_steps / all_steps) * 100)  # 进度=结束阶段数/总阶段数，*100是前端展示时直接展示具体的数字加%
     print('【整个压测任务结束】')
-    print('all_times:', all_times)
-    print('all_fail_threads:', all_fail_threads)
+    # print('all_times:', all_times)
+    # print('all_fail_threads:', all_fail_threads)
     task.update(status='已结束', all_times=all_times, all_threads=all_threads, all_fail_threads=all_fail_threads)
 
 

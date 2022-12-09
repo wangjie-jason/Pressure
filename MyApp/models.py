@@ -21,6 +21,7 @@ class DB_Tasks(models.Model):
     all_times = models.CharField(max_length=5000, null=True, blank=True, default=[])  # 整个任务所有阶段及轮的时间
     all_threads = models.CharField(max_length=5000, null=True, blank=True, default=[])  # 整个任务所有的线程数
     all_fail_threads = models.CharField(max_length=5000, null=True, blank=True, default=[])  # 整个任务所有失败的线程数
+    progress = models.IntegerField(default=0)  # 整个任务的进度，按阶段划分
 
     def __str__(self):
         return self.des

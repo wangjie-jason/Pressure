@@ -9,5 +9,4 @@ import random
 
 
 def t(a, b, c):
-    s = random.randint(0, 10)
-    time.sleep(s)
+    time.sleep(10)
