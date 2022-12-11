@@ -354,7 +354,7 @@ def get_all_times(request):  # 线程数计划[10,10,10,10,10],all_times[step][{
         'legend_data': legend_data,
         'xAxis_data': list(range(max_time)),
         "series": series
-    }
+    } 
     # {'name': '项目3', "data": [6, 21, 12, 19, 22, 15, 9, 2, 32, 5, 12, 36], 'type': 'line'}
     res['option'] = option
     res['thread_detail'] = all_threads

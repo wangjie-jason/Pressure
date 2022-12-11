@@ -8,5 +8,5 @@ import time
 import random
 
 
-def t(a, b, c):
-    time.sleep(10)
+def t():
+    time.sleep(random.randint(0,2))

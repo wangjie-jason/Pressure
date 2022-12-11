@@ -91,7 +91,7 @@ def play_tasks(mq):
             exec('from scripts.python.%s import %s\n%s' % (
                 script_name.split('.')[0], script_params.split('(')[0], script_params))
         except Exception as e:  # 异常代表线程执行失败，则将round_fail_threads_%s中的"fail"+1来统计失败数
-            print("异常原因：",e)
+            print("异常原因：", e)
             exec('round_fail_threads_%s["fail"]+=1' % tmp)
         end_tims = time.time()
         cha = int(end_tims - start_time)  # 执行每个线程所耗费的时间，精确到秒
@@ -103,7 +103,7 @@ def play_tasks(mq):
     def doit_go(script_path, script_params, tmp):
         print('go')
 
-    def one_round(script_path, thread_num, script_model, script_params):
+    def one_round(script_path, thread_num, script_model, script_params, pj):
         # global round_times
         # round_times = {}  # 每轮所有线程的时间
         tmp = str(time.time()).replace('.', '')
@@ -115,12 +115,22 @@ def play_tasks(mq):
 
         ts = []
         target = {'other': doit_other, 'python': doit_python, 'go': doit_go}[script_model]
+
+        if pj:  # 是否要平均发出请求
+            if thread_num != 1:
+                rest = 1 / (thread_num - 1)  # 设置一个休息时间，使压测方式为持续压测时，线程按1s内平均发出去，而不是瞬时全部发出
+            else:
+                rest = 0
+        else:
+            rest = 0
+
         for n in range(thread_num):
             t = threading.Thread(target=target, args=(script_path, script_params, tmp))
             t.daemon = True
             ts.append(t)
         for t in ts:
             t.start()
+            time.sleep(rest)
         for t in ts:
             t.join()
         print('-------------结束了一轮压测--------------')
@@ -178,6 +188,10 @@ def play_tasks(mq):
         script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts', script_model,
                                    script_name)
         trs = []
+        pj = False  # 判断是否需要平均发出请求的开关
+        if 's' in step['old_round']:  # 当为持续压测时，即old_round = xxxs时，就平均发出请求
+            pj = True
+        step['old_round'] = step['old_round'].split('s')[0]  # 虚假需求，支持持续压测时，去掉old_round传的s。old_round=120s
         if '+' in step['old_num']:  # 无限增压
             task_rounds = 100
         elif '_' in step['old_num']:  # 瞬时增压
@@ -201,7 +215,7 @@ def play_tasks(mq):
             #############################
 
             step_threads.append(thread_num)
-            tr = threading.Thread(target=one_round, args=(script_path, thread_num, script_model, script_params))
+            tr = threading.Thread(target=one_round, args=(script_path, thread_num, script_model, script_params, pj))
             tr.daemon = True
             trs.append(tr)
         for tr in trs:  # tr=轮

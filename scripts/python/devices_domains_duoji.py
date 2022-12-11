@@ -2,7 +2,7 @@
 # -*- coding:utf-8 -*-
 # @Time : 2022/12/8 16:23
 # @Author : wangjie
-# @File : material_management.py.py
+# @File : devices_domains_duoji.py
 # @project : Pressure
 
 
@@ -96,6 +96,3 @@ def t():
     print(response.text)
 
     # print('devices_subsystems接口请求完成')
-
-
-t()
